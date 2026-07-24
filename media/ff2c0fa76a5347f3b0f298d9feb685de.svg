@@ -1,0 +1,11 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="323" height="215" viewBox="0 0 323 215">
+  <rect width="323" height="215" fill="#C41E3A"/>
+  <g transform="translate(111,45)" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round">
+    <path d="M50 90 C20 90 5 70 5 50 C5 30 20 10 50 10 C80 10 95 30 95 50 C95 70 80 90 50 90 Z" opacity="0"/>
+    <circle cx="50" cy="55" r="14"/>
+    <path d="M50 75 L50 100"/>
+    <path d="M20 40 Q50 15 80 40"/>
+    <path d="M5 30 Q50 -5 95 30"/>
+  </g>
+  <text x="161" y="175" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="14">CONTACT</text>
+</svg>
