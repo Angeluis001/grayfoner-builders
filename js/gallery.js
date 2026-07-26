@@ -21,7 +21,7 @@
       ".gf-carousel__viewport{position:relative;width:100%;height:100%;overflow:hidden;}",
       ".gf-carousel__track{display:flex;height:100%;transition:transform .7s ease;will-change:transform;}",
       ".gf-carousel__slide{flex:0 0 100%;width:100%;height:100%;position:relative;overflow:hidden;background:#1a1a1a;}",
-      ".gf-carousel__slide img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;}",
+      ".gf-carousel__slide img{position:absolute;inset:0;width:100%;height:100%;min-width:100%;min-height:100%;max-width:none;max-height:none;object-fit:cover;object-position:center center;display:block;}",
       ".gf-carousel--home::after{content:'';position:absolute;left:0;right:0;bottom:0;height:72px;background:linear-gradient(to bottom,transparent,rgba(242,242,242,.92));pointer-events:none;z-index:3;}",
       ".gf-carousel__btn{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:48px;height:64px;border:0;border-radius:4px;background:rgba(0,0,0,.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}",
       ".gf-carousel__btn:hover{background:rgba(0,0,0,.55);}",
@@ -105,6 +105,13 @@
       img.alt = "Project photo " + (i + 1);
       img.loading = i === 0 ? "eager" : "lazy";
       img.decoding = "async";
+      // Force cover-fit once the browser knows natural size
+      img.addEventListener("load", function () {
+        img.style.objectFit = "cover";
+        img.style.objectPosition = "center center";
+        img.style.width = "100%";
+        img.style.height = "100%";
+      });
       slide.appendChild(img);
       track.appendChild(slide);
     });
