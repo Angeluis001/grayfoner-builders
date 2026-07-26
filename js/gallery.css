@@ -1,48 +1,122 @@
-/* Static Pro Gallery — base styles (runtime CSS also injected by gallery.js) */
-
-.gf-gallery-host,
-.pro-gallery-parent-container,
-.pro-gallery.inline-styles,
-[id^="pro-gallery-container"] {
-  position: relative !important;
+/* Before JS: don't leave a broken 1450px empty strip */
+.pro-gallery-parent-container.gallery-slider,
+.pro-gallery.inline-styles.slider,
+[id^="pro-gallery-container"],
+[id^="gallery-horizontal-scroll"] {
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
-.gallery-horizontal-scroll.gf-gallery-viewport,
-.gf-gallery-viewport {
-  overflow: hidden !important;
-  position: relative !important;
+/* Fallback styles if JS CSS injection is delayed */
+.gf-carousel {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #e8e8e8;
+  overflow: hidden;
 }
 
-.gf-gallery-track {
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: nowrap !important;
+.gf-carousel--home {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  height: min(48vh, 440px);
+  min-height: 260px;
+}
+
+.gf-carousel--page {
+  width: 100%;
+  max-width: 980px;
+  height: min(52vh, 520px);
+  min-height: 280px;
+}
+
+.gf-carousel__viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.gf-carousel__track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.45s ease;
   will-change: transform;
 }
 
-.gf-gallery-slide {
-  position: relative !important;
-  overflow: hidden !important;
-  box-sizing: border-box !important;
+.gf-carousel__slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
 }
 
-.gf-gallery-slide img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  max-width: none !important;
-  display: block !important;
+.gf-carousel__slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
-.gf-gallery-arrow,
-.nav-arrows-container,
-button[data-hook="nav-arrow-next"],
-button[data-hook="nav-arrow-prev"] {
-  z-index: 100 !important;
-  pointer-events: auto !important;
-  cursor: pointer !important;
+.gf-carousel__btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 48px;
+  height: 64px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.gf-gallery-host .item-action {
-  pointer-events: none !important;
+.gf-carousel__btn:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.gf-carousel__btn--prev {
+  left: 10px;
+}
+
+.gf-carousel__btn--next {
+  right: 10px;
+}
+
+.gf-carousel__btn svg {
+  width: 22px;
+  height: 36px;
+  fill: #fff;
+}
+
+.gf-carousel__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  z-index: 5;
+}
+
+.gf-carousel__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+}
+
+.gf-carousel__dot.is-active {
+  background: #fff;
 }

@@ -1,592 +1,311 @@
 /**
- * Grayfoner Builders — robust static Pro Gallery controller
- * Works without the original Wix Pro Gallery runtime.
+ * Grayfoner Builders — reliable gallery
  *
- * - Slideshow / thumbnail galleries (full-bleed slides)
- * - Home strip / multi-image slider
- * - Next / Prev arrows (creates Prev if missing)
- * - Keyboard + touch swipe
- * - Root-safe: does not depend on Wix scroll hacks
+ * Strategy: do NOT fight Wix Pro Gallery DOM.
+ * Extract image URLs from each Pro Gallery, replace the whole gallery
+ * host with a simple full-width carousel that keeps images visible.
  */
 (function () {
   "use strict";
 
-  var STYLE_ID = "gf-gallery-runtime-style";
+  var STYLE_ID = "gf-carousel-style";
 
-  function qs(root, sel) {
-    return (root || document).querySelector(sel);
-  }
-  function qsa(root, sel) {
-    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
-  }
-
-  function injectRuntimeCss() {
+  function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
-    var style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = [
-      ".gf-gallery-host{position:relative!important;overflow:hidden!important;}",
-      ".gf-gallery-viewport{position:relative!important;overflow:hidden!important;width:100%!important;height:100%!important;}",
-      ".gf-gallery-track{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;height:100%!important;will-change:transform;transition:transform .45s ease;}",
-      ".gf-gallery-slide{position:relative!important;flex:0 0 auto!important;height:100%!important;overflow:hidden!important;box-sizing:border-box!important;}",
-      ".gf-gallery-slide img{width:100%!important;height:100%!important;object-fit:cover!important;max-width:none!important;display:block!important;}",
-      ".gf-gallery-slide .gallery-item-wrapper,.gf-gallery-slide [data-hook='item-wrapper'],.gf-gallery-slide .gallery-item-content,.gf-gallery-slide .gallery-item-container{width:100%!important;height:100%!important;position:relative!important;left:0!important;top:0!important;margin:0!important;}",
-      ".gf-gallery-arrow{position:absolute!important;top:50%!important;transform:translateY(-50%)!important;z-index:100!important;pointer-events:auto!important;cursor:pointer!important;background:rgba(0,0,0,.28)!important;border:0!important;border-radius:4px!important;width:48px!important;height:64px!important;display:flex!important;align-items:center!important;justify-content:center!important;color:#fff!important;opacity:.95!important;padding:0!important;}",
-      ".gf-gallery-arrow:hover{background:rgba(0,0,0,.45)!important;opacity:1!important;}",
-      ".gf-gallery-arrow svg,.gf-gallery-arrow path,.gf-gallery-arrow .slideshow-arrow{fill:#fff!important;color:#fff!important;}",
-      ".gf-gallery-arrow.prev{left:8px!important;right:auto!important;}",
-      ".gf-gallery-arrow.next{right:8px!important;left:auto!important;}",
-      ".gf-gallery-host .nav-arrows-container,.gf-gallery-host [data-hook='nav-arrow-next'],.gf-gallery-host [data-hook='nav-arrow-prev']{z-index:100!important;pointer-events:auto!important;cursor:pointer!important;}",
-      /* kill common Wix blockers over the gallery */
-      ".gf-gallery-host .item-action{pointer-events:none!important;}",
-      ".gf-gallery-dots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:8px;z-index:90;pointer-events:auto;}",
-      ".gf-gallery-dot{width:9px;height:9px;border-radius:50%;border:0;padding:0;background:rgba(255,255,255,.45);cursor:pointer;}",
-      ".gf-gallery-dot.active{background:#fff;}",
-    ].join("\n");
-    document.head.appendChild(style);
+    var s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = [
+      ".gf-carousel{position:relative;width:100%;max-width:100%;margin:0 auto;background:#e8e8e8;overflow:hidden;}",
+      ".gf-carousel--home{width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);height:min(48vh,440px);min-height:260px;}",
+      ".gf-carousel--page{width:100%;max-width:980px;height:min(52vh,520px);min-height:280px;}",
+      ".gf-carousel__viewport{position:relative;width:100%;height:100%;overflow:hidden;}",
+      ".gf-carousel__track{display:flex;height:100%;transition:transform .45s ease;will-change:transform;}",
+      ".gf-carousel__slide{flex:0 0 100%;width:100%;height:100%;position:relative;}",
+      ".gf-carousel__slide img{width:100%;height:100%;object-fit:cover;display:block;}",
+      ".gf-carousel__btn{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:48px;height:64px;border:0;border-radius:4px;background:rgba(0,0,0,.35);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}",
+      ".gf-carousel__btn:hover{background:rgba(0,0,0,.55);}",
+      ".gf-carousel__btn--prev{left:10px;}",
+      ".gf-carousel__btn--next{right:10px;}",
+      ".gf-carousel__btn svg{width:22px;height:36px;fill:#fff;}",
+      ".gf-carousel__dots{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;gap:8px;z-index:5;}",
+      ".gf-carousel__dot{width:9px;height:9px;border-radius:50%;border:0;padding:0;background:rgba(255,255,255,.45);cursor:pointer;}",
+      ".gf-carousel__dot.is-active{background:#fff;}",
+      "@media (max-width:700px){.gf-carousel--home,.gf-carousel--page{min-height:200px;height:38vh;}.gf-carousel__btn{width:40px;height:52px;}}",
+    ].join("");
+    document.head.appendChild(s);
   }
 
-  function getScrollEl(root) {
-    return (
-      qs(root, ".gallery-horizontal-scroll") ||
-      qs(root, '[id^="gallery-horizontal-scroll"]') ||
-      qs(root, ".gallery-column")
+  function uniqueImages(root) {
+    var urls = [];
+    var seen = {};
+    var nodes = root.querySelectorAll(
+      'img[src*="media/"], img[src*="/media/"], source[srcset*="media/"]'
     );
-  }
-
-  function getTrack(scroll) {
-    return (
-      qs(scroll, ".gallery-horizontal-scroll-inner") ||
-      scroll.firstElementChild ||
-      scroll
-    );
-  }
-
-  function collectSlides(root, scroll) {
-    var scope = scroll || root;
-    var groups = qsa(scope, '[data-hook="group-view"]');
-    if (groups.length > 1) return groups;
-
-    var items = qsa(scope, '[data-hook="item-container"]');
-    if (items.length > 1) {
-      // de-dupe by data-idx / data-id
-      var seen = {};
-      var out = [];
-      items.forEach(function (el) {
-        var key =
-          el.getAttribute("data-idx") ||
-          el.getAttribute("data-id") ||
-          el.getAttribute("data-hash") ||
-          el.id;
-        if (!key) key = "i" + out.length;
-        if (!seen[key]) {
-          seen[key] = true;
-          out.push(el);
-        }
-      });
-      if (out.length > 1) return out;
-    }
-
-    // Fallback: direct children of track that contain images
-    var track = getTrack(scroll);
-    var kids = Array.prototype.slice.call(track.children || []);
-    kids = kids.filter(function (k) {
-      return k.querySelector && k.querySelector("img");
+    nodes.forEach(function (node) {
+      var src = "";
+      if (node.tagName === "SOURCE") {
+        var ss = node.getAttribute("srcset") || "";
+        src = (ss.split(",")[0] || "").trim().split(/\s+/)[0] || "";
+      } else {
+        src = node.getAttribute("src") || "";
+      }
+      if (!src || src.indexOf("media/") === -1) return;
+      // skip tiny ui / icons if obvious
+      if (/da72cb_|23fd2a2|49c1daac|ff2c0fa|f22d357|emptystate/i.test(src)) return;
+      // normalize to root-relative
+      var path = src;
+      if (path.indexOf("http") === 0) {
+        try {
+          path = new URL(path).pathname;
+        } catch (e) {}
+      }
+      if (path.charAt(0) !== "/") {
+        path = "/" + path.replace(/^\.\//, "");
+      }
+      // only real photos
+      if (!/\.(jpe?g|png|webp)$/i.test(path)) return;
+      if (seen[path]) return;
+      seen[path] = true;
+      urls.push(path);
     });
-    return kids;
+    return urls;
   }
 
-  function measureSlideWidth(host, scroll, slide, mode) {
-    var hostW =
-      (scroll && (scroll.clientWidth || scroll.offsetWidth)) ||
-      (host && (host.clientWidth || host.offsetWidth)) ||
-      980;
-
-    if (mode === "slide") return hostW;
-
-    // strip: try group CSS vars / inline width / image natural
-    var cs = window.getComputedStyle(slide);
-    var gw = parseFloat(cs.getPropertyValue("--group-width")) || 0;
-    if (gw > 40) return gw;
-
-    var box =
-      slide.matches && slide.matches('[data-hook="item-container"]')
-        ? slide
-        : qs(slide, '[data-hook="item-container"]') || slide;
-    var sw = parseInt((box.style && box.style.width) || "0", 10) || 0;
-    if (sw > 40) return sw;
-
-    if (box.offsetWidth > 40) return box.offsetWidth;
-
-    // default strip card
-    return Math.min(404, Math.max(280, Math.floor(hostW / 3.5)));
-  }
-
-  function makeArrow(direction, existing) {
-    var btn = existing || document.createElement("button");
-    btn.type = "button";
-    btn.className =
-      "gf-gallery-arrow " +
-      direction +
-      " nav-arrows-container " +
-      direction;
-    btn.setAttribute(
-      "data-hook",
-      direction === "next" ? "nav-arrow-next" : "nav-arrow-prev"
+  function chevron(flip) {
+    var t = flip ? ' style="transform:scaleX(-1)"' : "";
+    return (
+      '<svg viewBox="0 0 23 39"' +
+      t +
+      ' aria-hidden="true"><path d="M857.005,231.479L858.5,230l18.124,18-18.127,18-1.49-1.48L873.638,248Z" transform="translate(-855 -230)"></path></svg>'
     );
-    btn.setAttribute(
-      "aria-label",
-      direction === "next" ? "Next Item" : "Previous Item"
-    );
-    btn.tabIndex = 0;
-
-    // Keep existing SVG if present, else inject chevron
-    if (!btn.querySelector("svg")) {
-      var flip = direction === "prev" ? ' style="transform:scaleX(-1)"' : "";
-      btn.innerHTML =
-        '<svg width="23" height="39" viewBox="0 0 23 39"' +
-        flip +
-        '><path class="slideshow-arrow" fill="#fff" d="M857.005,231.479L858.5,230l18.124,18-18.127,18-1.49-1.48L873.638,248Z" transform="translate(-855 -230)"></path></svg>';
-    } else {
-      var path = btn.querySelector("path, .slideshow-arrow");
-      if (path) {
-        path.setAttribute("fill", "#fff");
-        path.style.fill = "#fff";
-      }
-      if (direction === "prev") {
-        var svg = btn.querySelector("svg");
-        if (svg) svg.style.transform = "scaleX(-1)";
-      }
-    }
-    return btn;
   }
 
-  function buildDots(host, count, goTo) {
-    var old = qs(host, ".gf-gallery-dots");
-    if (old) old.remove();
-    if (count < 2 || count > 24) return null;
+  function buildCarousel(images, variant) {
     var wrap = document.createElement("div");
-    wrap.className = "gf-gallery-dots";
-    for (var i = 0; i < count; i++) {
-      (function (idx) {
+    wrap.className =
+      "gf-carousel " +
+      (variant === "home" ? "gf-carousel--home" : "gf-carousel--page");
+    wrap.setAttribute("data-gf-carousel", "true");
+    wrap.setAttribute("role", "region");
+    wrap.setAttribute("aria-label", "Image gallery");
+    wrap.tabIndex = 0;
+
+    var viewport = document.createElement("div");
+    viewport.className = "gf-carousel__viewport";
+
+    var track = document.createElement("div");
+    track.className = "gf-carousel__track";
+
+    images.forEach(function (src, i) {
+      var slide = document.createElement("div");
+      slide.className = "gf-carousel__slide";
+      var img = document.createElement("img");
+      img.src = src;
+      img.alt = "Project photo " + (i + 1);
+      img.loading = i === 0 ? "eager" : "lazy";
+      img.decoding = "async";
+      slide.appendChild(img);
+      track.appendChild(slide);
+    });
+
+    viewport.appendChild(track);
+    wrap.appendChild(viewport);
+
+    var prev = document.createElement("button");
+    prev.type = "button";
+    prev.className = "gf-carousel__btn gf-carousel__btn--prev";
+    prev.setAttribute("aria-label", "Previous image");
+    prev.innerHTML = chevron(true);
+
+    var next = document.createElement("button");
+    next.type = "button";
+    next.className = "gf-carousel__btn gf-carousel__btn--next";
+    next.setAttribute("aria-label", "Next image");
+    next.innerHTML = chevron(false);
+
+    wrap.appendChild(prev);
+    wrap.appendChild(next);
+
+    var dots = document.createElement("div");
+    dots.className = "gf-carousel__dots";
+    if (images.length > 1 && images.length <= 24) {
+      images.forEach(function (_, i) {
         var d = document.createElement("button");
         d.type = "button";
-        d.className = "gf-gallery-dot" + (idx === 0 ? " active" : "");
-        d.setAttribute("aria-label", "Go to slide " + (idx + 1));
-        d.addEventListener("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          goTo(idx);
-        });
-        wrap.appendChild(d);
-      })(i);
-    }
-    host.appendChild(wrap);
-    return wrap;
-  }
-
-  function initOneGallery(root) {
-    if (root.getAttribute("data-gf-gallery-ready") === "true") return;
-
-    var parent =
-      root.classList.contains("pro-gallery-parent-container")
-        ? root
-        : qs(root, ".pro-gallery-parent-container") || root;
-
-    var scroll = getScrollEl(root) || getScrollEl(parent);
-    if (!scroll) return;
-
-    var slides = collectSlides(root, scroll);
-    if (slides.length < 2) return;
-
-    var host =
-      qs(root, ".pro-gallery.inline-styles") ||
-      qs(root, '[id^="pro-gallery-container"]') ||
-      parent ||
-      root;
-
-    host.classList.add("gf-gallery-host");
-
-    var height =
-      scroll.clientHeight ||
-      scroll.offsetHeight ||
-      host.clientHeight ||
-      parseInt(scroll.style.height, 10) ||
-      353;
-
-    // Detect mode
-    var isThumb =
-      parent.classList.contains("gallery-thumbnails") ||
-      host.classList.contains("gallery-thumbnails") ||
-      !!qs(root, ".gallery-thumbnails");
-    var firstW = measureSlideWidth(host, scroll, slides[0], "strip");
-    var hostW = scroll.clientWidth || host.clientWidth || 980;
-    var mode =
-      isThumb || firstW >= hostW * 0.8 ? "slide" : "strip";
-
-    // Rebuild as transform track
-    var track = getTrack(scroll);
-    track.classList.add("gf-gallery-track");
-
-    // Ensure slides are direct flex children of track when possible
-    // If slides are already under track, re-order/normalize styles
-    var widths = [];
-    slides.forEach(function (slide, i) {
-      // If slide is not under track, leave it (still style in place)
-      slide.classList.add("gf-gallery-slide");
-      var w = measureSlideWidth(host, scroll, slide, mode);
-      if (mode === "slide") w = hostW;
-      widths.push(w);
-
-      slide.style.position = "relative";
-      slide.style.left = "auto";
-      slide.style.top = "auto";
-      slide.style.right = "auto";
-      slide.style.bottom = "auto";
-      slide.style.flex = "0 0 " + w + "px";
-      slide.style.width = w + "px";
-      slide.style.minWidth = w + "px";
-      slide.style.maxWidth = w + "px";
-      slide.style.height = height + "px";
-      slide.style.display = "block";
-      slide.style.opacity = "1";
-      slide.style.visibility = "visible";
-      slide.style.transform = "none";
-      slide.style.margin = "0";
-      slide.removeAttribute("aria-hidden");
-
-      // Normalize nested absolute positioning from Wix SSR
-      qsa(slide, "[data-hook='item-container'], .gallery-item-container, [data-hook='item-wrapper'], .gallery-item-wrapper, .gallery-item-content, .item-link-wrapper").forEach(function (n) {
-        n.style.position = "relative";
-        n.style.left = "0";
-        n.style.top = "0";
-        n.style.width = "100%";
-        n.style.height = "100%";
-        n.style.margin = "0";
-        n.style.opacity = "1";
-        n.style.visibility = "visible";
-        n.style.display = "block";
+        d.className = "gf-carousel__dot" + (i === 0 ? " is-active" : "");
+        d.setAttribute("aria-label", "Go to image " + (i + 1));
+        d.dataset.index = String(i);
+        dots.appendChild(d);
       });
-
-      qsa(slide, "img").forEach(function (img) {
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "cover";
-        img.style.maxWidth = "none";
-        img.loading = img.loading || "lazy";
-      });
-
-      // Move under track if orphaned
-      if (slide.parentElement !== track) {
-        track.appendChild(slide);
-      }
-    });
-
-    // Remove empty leftover nodes that break flex width
-    Array.prototype.slice.call(track.children).forEach(function (child) {
-      if (slides.indexOf(child) === -1 && !child.querySelector("img")) {
-        // keep structural nodes that are empty wrappers? hide them
-        if (!child.classList.contains("gf-gallery-slide")) {
-          child.style.display = "none";
-        }
-      }
-    });
-
-    var total = widths.reduce(function (a, b) {
-      return a + b;
-    }, 0);
-
-    scroll.classList.add("gf-gallery-viewport");
-    scroll.style.overflow = "hidden";
-    scroll.style.width = "100%";
-    scroll.style.height = height + "px";
-    scroll.style.position = "relative";
-    scroll.scrollLeft = 0;
-
-    track.style.display = "flex";
-    track.style.flexDirection = "row";
-    track.style.flexWrap = "nowrap";
-    track.style.width = total + "px";
-    track.style.minWidth = total + "px";
-    track.style.height = height + "px";
-    track.style.position = "relative";
-    track.style.left = "0";
-    track.style.top = "0";
-    track.style.transform = "translate3d(0,0,0)";
-    track.style.transition = "transform 0.45s ease";
-
-    host.style.position = "relative";
-    host.style.overflow = "hidden";
-    if (!host.style.height && height) {
-      // don't force if host already sized by Wix mesh
-    }
-
-    // Arrows
-    var nextExisting =
-      qs(host, '[data-hook="nav-arrow-next"]') ||
-      qs(root, '[data-hook="nav-arrow-next"]') ||
-      qs(parent, '[data-hook="nav-arrow-next"]');
-    var prevExisting =
-      qs(host, '[data-hook="nav-arrow-prev"]') ||
-      qs(root, '[data-hook="nav-arrow-prev"]');
-
-    var nextBtn = makeArrow("next", nextExisting);
-    var prevBtn = makeArrow("prev", prevExisting);
-
-    if (!nextExisting) host.appendChild(nextBtn);
-    else {
-      nextBtn.classList.add("gf-gallery-arrow", "next");
-      // re-parent onto host so it's never clipped/hidden
-      if (nextBtn.parentElement !== host) host.appendChild(nextBtn);
-    }
-    if (!prevExisting) host.appendChild(prevBtn);
-    else {
-      prevBtn.classList.add("gf-gallery-arrow", "prev");
-      if (prevBtn.parentElement !== host) host.appendChild(prevBtn);
+      wrap.appendChild(dots);
     }
 
     var index = 0;
-    var positions = [];
-    var acc = 0;
-    widths.forEach(function (w) {
-      positions.push(acc);
-      acc += w;
-    });
-
-    var dotsWrap = null;
-
-    function setDots() {
-      if (!dotsWrap) return;
-      qsa(dotsWrap, ".gf-gallery-dot").forEach(function (d, i) {
-        if (i === index) d.classList.add("active");
-        else d.classList.remove("active");
+    function goTo(i) {
+      if (i < 0) i = images.length - 1;
+      if (i >= images.length) i = 0;
+      index = i;
+      track.style.transform = "translate3d(" + -index * 100 + "%,0,0)";
+      Array.prototype.forEach.call(dots.children, function (d, di) {
+        if (di === index) d.classList.add("is-active");
+        else d.classList.remove("is-active");
       });
     }
 
-    function goTo(i, instant) {
-      if (i < 0) i = slides.length - 1;
-      if (i >= slides.length) i = 0;
-      index = i;
-      var x = positions[index] || 0;
-      if (instant) {
-        track.style.transition = "none";
-        track.style.transform = "translate3d(" + -x + "px,0,0)";
-        // force reflow
-        void track.offsetHeight;
-        track.style.transition = "transform 0.45s ease";
-      } else {
-        track.style.transform = "translate3d(" + -x + "px,0,0)";
-      }
-      setDots();
-    }
-
-    function next() {
-      goTo(index + 1);
-    }
-    function prev() {
-      goTo(index - 1);
-    }
-
-    function onArrowClick(e) {
+    prev.addEventListener("click", function (e) {
       e.preventDefault();
       e.stopPropagation();
-      e.stopImmediatePropagation();
-      var t = e.currentTarget;
-      if (
-        t.getAttribute("data-hook") === "nav-arrow-next" ||
-        t.classList.contains("next")
-      ) {
-        next();
-      } else {
-        prev();
-      }
-    }
-
-    [nextBtn, prevBtn].forEach(function (btn) {
-      // clone to drop stale Wix handlers if any
-      var clean = btn.cloneNode(true);
-      clean.className = btn.className;
-      if (btn.parentNode) btn.parentNode.replaceChild(clean, btn);
-      if (clean.getAttribute("data-hook") === "nav-arrow-next" || clean.classList.contains("next")) {
-        nextBtn = clean;
-        clean.classList.add("gf-gallery-arrow", "next");
-      } else {
-        prevBtn = clean;
-        clean.classList.add("gf-gallery-arrow", "prev");
-      }
-      clean.addEventListener("click", onArrowClick, true);
-      clean.addEventListener(
-        "keydown",
-        function (e) {
-          if (e.key === "Enter" || e.key === " ") {
-            onArrowClick(e);
-          }
-        },
-        true
-      );
+      goTo(index - 1);
     });
-
-    dotsWrap = buildDots(host, slides.length, function (i) {
-      goTo(i);
+    next.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      goTo(index + 1);
     });
-
-    // Keyboard on host
-    host.tabIndex = 0;
-    host.addEventListener("keydown", function (e) {
+    dots.addEventListener("click", function (e) {
+      var t = e.target;
+      if (!t.classList || !t.classList.contains("gf-carousel__dot")) return;
+      e.preventDefault();
+      goTo(parseInt(t.dataset.index, 10) || 0);
+    });
+    wrap.addEventListener("keydown", function (e) {
       if (e.key === "ArrowRight") {
         e.preventDefault();
-        next();
+        goTo(index + 1);
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        prev();
+        goTo(index - 1);
       }
     });
 
-    // Touch swipe
-    var touchX = null;
-    host.addEventListener(
+    var tx = null;
+    wrap.addEventListener(
       "touchstart",
       function (e) {
-        if (!e.touches || !e.touches.length) return;
-        touchX = e.touches[0].clientX;
+        if (e.touches && e.touches[0]) tx = e.touches[0].clientX;
       },
       { passive: true }
     );
-    host.addEventListener(
+    wrap.addEventListener(
       "touchend",
       function (e) {
-        if (touchX == null || !e.changedTouches || !e.changedTouches.length)
-          return;
-        var dx = e.changedTouches[0].clientX - touchX;
-        touchX = null;
+        if (tx == null || !e.changedTouches || !e.changedTouches[0]) return;
+        var dx = e.changedTouches[0].clientX - tx;
+        tx = null;
         if (Math.abs(dx) < 40) return;
-        if (dx < 0) next();
-        else prev();
+        if (dx < 0) goTo(index + 1);
+        else goTo(index - 1);
       },
       { passive: true }
     );
 
-    // Resize
-    var resizeTimer;
-    window.addEventListener("resize", function () {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () {
-        hostW = scroll.clientWidth || host.clientWidth || hostW;
-        height =
-          scroll.clientHeight ||
-          scroll.offsetHeight ||
-          host.clientHeight ||
-          height;
-        total = 0;
-        positions = [];
-        widths = [];
-        slides.forEach(function (slide) {
-          var w = mode === "slide" ? hostW : measureSlideWidth(host, scroll, slide, mode);
-          if (mode === "slide") w = hostW;
-          widths.push(w);
-          positions.push(total);
-          total += w;
-          slide.style.flex = "0 0 " + w + "px";
-          slide.style.width = w + "px";
-          slide.style.minWidth = w + "px";
-          slide.style.maxWidth = w + "px";
-          slide.style.height = height + "px";
-        });
-        track.style.width = total + "px";
-        track.style.minWidth = total + "px";
-        track.style.height = height + "px";
-        scroll.style.height = height + "px";
-        goTo(index, true);
-      }, 120);
-    });
-
-    goTo(0, true);
-    root.setAttribute("data-gf-gallery-ready", "true");
-    host.setAttribute("data-gf-gallery-ready", "true");
+    goTo(0);
+    return wrap;
   }
 
-  function findGalleryRoots() {
-    var set = [];
+  function findHosts() {
+    var hosts = [];
     var seen = {};
-
     function add(el) {
       if (!el || seen[el]) return;
-      // Only galleries that actually have a horizontal scroller + multiple images
-      var scroll = getScrollEl(el);
-      if (!scroll) return;
-      var slides = collectSlides(el, scroll);
-      if (slides.length < 2) return;
       seen[el] = true;
-      set.push(el);
+      hosts.push(el);
     }
+    document
+      .querySelectorAll(
+        "[id^='pro-gallery-comp-'], .pro-gallery-parent-container, .pro-gallery.inline-styles.slider"
+      )
+      .forEach(function (el) {
+        // prefer outermost gallery block
+        var outer =
+          el.closest("[id^='comp-'][class*='pro-gallery'], [id^='gallery-wrapper-'], .pro-gallery") ||
+          el;
+        // climb to a stable host that wraps the slider
+        var host =
+          el.closest(".pro-gallery-parent-container") ||
+          el.closest("[id^='pro-gallery-comp-']") ||
+          el.closest("[id^='gallery-wrapper-']") ||
+          el;
+        add(host);
+      });
 
-    qsa(document, "[id^='pro-gallery-comp-']").forEach(add);
-    qsa(document, ".pro-gallery").forEach(add);
-    qsa(document, ".pro-gallery-parent-container").forEach(add);
-
-    // Prefer outermost unique: if A contains B, keep A only
-    return set.filter(function (el) {
-      return !set.some(function (other) {
-        return other !== el && other.contains(el);
+    // keep outermost only
+    return hosts.filter(function (h) {
+      return !hosts.some(function (o) {
+        return o !== h && o.contains(h);
       });
     });
   }
 
-  function initAll() {
-    injectRuntimeCss();
-    var roots = findGalleryRoots();
-    roots.forEach(function (root) {
+  function isHomePage() {
+    var p = (location.pathname || "/").replace(/\/+$/, "") || "/";
+    return p === "/" || p === "/index" || p === "/index.html" || /index\.html$/i.test(p);
+  }
+
+  function init() {
+    injectCss();
+    var hosts = findHosts();
+    var home = isHomePage();
+    var count = 0;
+
+    hosts.forEach(function (host) {
+      if (host.getAttribute("data-gf-replaced") === "1") return;
+      var images = uniqueImages(host);
+      if (images.length < 1) return;
+
+      var carousel = buildCarousel(images, home ? "home" : "page");
+      // Replace the host content / node
       try {
-        initOneGallery(root);
+        host.setAttribute("data-gf-replaced", "1");
+        var parent = host.parentNode;
+        if (parent) {
+          parent.replaceChild(carousel, host);
+          // Relax Wix mesh constraints so full-width carousel can show
+          var el = parent;
+          for (var up = 0; up < 6 && el && el !== document.body; up++) {
+            el.style.height = "auto";
+            el.style.minHeight = "0";
+            el.style.maxHeight = "none";
+            el.style.overflow = "visible";
+            if (home) {
+              el.style.width = "100%";
+              el.style.maxWidth = "100%";
+              el.style.left = "0";
+              el.style.marginLeft = "0";
+            }
+            el = el.parentElement;
+          }
+        } else {
+          host.innerHTML = "";
+          host.appendChild(carousel);
+        }
+        count++;
       } catch (err) {
-        if (typeof console !== "undefined") {
-          console.warn("[gf-gallery] init failed", err);
+        try {
+          host.innerHTML = "";
+          host.appendChild(carousel);
+          host.setAttribute("data-gf-replaced", "1");
+          count++;
+        } catch (e2) {
+          if (typeof console !== "undefined") console.warn("[gf-carousel]", e2);
         }
       }
     });
 
-    // Global capture fallback: any arrow click on page
-    document.addEventListener(
-      "click",
-      function (e) {
-        var btn = e.target.closest
-          ? e.target.closest(
-              '[data-hook="nav-arrow-next"], [data-hook="nav-arrow-prev"], .gf-gallery-arrow, .nav-arrows-container'
-            )
-          : null;
-        if (!btn) return;
-        var host = btn.closest
-          ? btn.closest("[data-gf-gallery-ready], .gf-gallery-host, .pro-gallery, .pro-gallery-parent-container")
-          : null;
-        if (!host || host.getAttribute("data-gf-gallery-ready") !== "true") {
-          // try init late
-          var root =
-            (btn.closest && btn.closest("[id^='pro-gallery-comp-'], .pro-gallery")) ||
-            null;
-          if (root && root.getAttribute("data-gf-gallery-ready") !== "true") {
-            try {
-              initOneGallery(root);
-            } catch (err) {}
-          }
-        }
-      },
-      true
-    );
-
     if (typeof console !== "undefined") {
-      console.info(
-        "[gf-gallery] initialized " + roots.length + " gallery(ies)"
-      );
+      console.info("[gf-carousel] replaced " + count + " gallery(ies)");
     }
   }
 
+  // Run ASAP after DOM, and once more after full load if needed
+  // (but only replace once thanks to data-gf-replaced)
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initAll);
+    document.addEventListener("DOMContentLoaded", init);
   } else {
-    initAll();
+    init();
   }
-  // Late paint (Wix CSS may change sizes)
   window.addEventListener("load", function () {
-    setTimeout(initAll, 50);
+    // Only init remaining unreplaced hosts (e.g. late paint)
+    init();
   });
 })();
