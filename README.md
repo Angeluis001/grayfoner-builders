@@ -1,11 +1,12 @@
-# Grayfoner Builders
+﻿# Grayfoner Builders
 
-Exact recovery of [grayfonerbuilders.com.au](https://www.grayfonerbuilders.com.au/) from the [Internet Archive (Jan 2026)](https://web.archive.org/web/20260115110835/https://www.grayfonerbuilders.com.au/).
+Exact recovery of [grayfonerbuilders.com.au](https://www.grayfonerbuilders.com.au/) from the Internet Archive.
 
-Built as a **static snapshot** of the original Wix site (original layout, logo, copy, colours, fonts, portfolio photos) for deployment on **Vercel**.
+Static snapshot of the original Wix site for **Vercel**.
 
-## Pages
+## Site map (full depth)
 
+### Top level
 | Page | File |
 |------|------|
 | Home | `index.html` |
@@ -14,6 +15,15 @@ Built as a **static snapshot** of the original Wix site (original layout, logo, 
 | Patios & Decks | `patios.html` |
 | Retaining & Exterior | `retaining-walls.html` |
 | Stables / Arena Roof | `copy-of-alton-downs.html` |
+
+### Project pages (depth 3)
+| Category | Projects |
+|----------|----------|
+| New Homes | `alton-downs.html`, `mount-cotton.html`, `salisbury.html` |
+| Renovations | `garbutt.html`, `paddington.html` |
+| Patios & Decks | `coopers-plains.html`, `flagstone.html`, `greenbank.html`, `jimboomba.html`, `spring-mountain.html` |
+| Retaining | `greenbank-1.html` |
+| Related | `copy-of-garbutt.html`, `copy-of-greenbank.html` |
 
 ## Local preview
 
@@ -25,15 +35,13 @@ Open http://127.0.0.1:8765/
 
 ## Deploy on Vercel
 
-1. Import **Angeluis001/grayfoner-builders** at [vercel.com/new](https://vercel.com/new)
-2. Framework: **Other**
-3. Leave Build / Output / Install empty
-4. Deploy
-5. Add custom domain `grayfonerbuilders.com.au` when ready
+1. Import **Angeluis001/grayfoner-builders**
+2. Framework: **Other** — leave Build / Output / Install empty
+3. Deploy
+4. Optional: attach `grayfonerbuilders.com.au`
 
-## Notes
+## Contact
 
-- Content and images recovered from Wayback Machine + Wix CDN.
-- Wix interactive widgets (slideshow autoplay, etc.) are static; layout and content match the archived site.
-- Contact: `0421 852 363` · `admin@grayfonerbuilders.com.au`
+- Phone: 0421 852 363
+- Email: admin@grayfonerbuilders.com.au
 - QBCC: Grayfoner Builders 24743 · Grayfoner Constructions Pty Ltd 1209168

@@ -205,29 +205,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Raleway:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style id="static-snapshot-fixes">
-  /* Map Wix proprietary fonts to free equivalents */
-  [style*="didot"], .font_0, .font_1, .font_2 {
-    font-family: "Playfair Display", Didot, "Times New Roman", serif !important;
-  }
   body, .font_7, .font_8, .font_9, .font_10 {
     font-family: Raleway, Helvetica, Arial, sans-serif;
   }
-  /* Ensure snapshot is visible without Wix JS hydration */
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #f2f2f2;
-  }
-  #SITE_CONTAINER {
-    min-height: 100vh;
-  }
-  /* Hide Wix accessibility skip noise sometimes left in DOM */
+  html, body { margin: 0; padding: 0; background: #f2f2f2; }
+  #SITE_CONTAINER { min-height: 100vh; }
   .SKIP_TO_CONTENT_BTN { position: absolute; left: -9999px; }
-  /* Make gallery images fill their frames when local */
-  img {
-    max-width: 100%;
-  }
-  /* Smooth anchor scroll for menu */
+  img { max-width: 100%; }
   html { scroll-behavior: smooth; }
 </style></head>
 <body class='' >
@@ -771,6 +755,22 @@ Extensions-Renovations</h1></div><wix-dropdown-menu id="comp-ihm8jbpc" class="Xw
 
 
 
-</body>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('a[href*="#"]').forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      var href = a.getAttribute("href") || "";
+      var id = href.indexOf("#") >= 0 ? href.split("#")[1] : "";
+      if (!id) return;
+      var el = document.getElementById(id);
+      if (el) {
+        e.preventDefault();
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        try { history.replaceState(null, "", "#" + id); } catch (err) {}
+      }
+    });
+  });
+});
+</script></body>
 </html>
 
