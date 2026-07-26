@@ -1,83 +1,48 @@
-/* Gallery control fixes for static Wix Pro Gallery snapshot */
+/* Static Pro Gallery — base styles (runtime CSS also injected by gallery.js) */
 
+.gf-gallery-host,
 .pro-gallery-parent-container,
 .pro-gallery.inline-styles,
 [id^="pro-gallery-container"] {
   position: relative !important;
 }
 
-.gallery-horizontal-scroll {
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+.gallery-horizontal-scroll.gf-gallery-viewport,
+.gf-gallery-viewport {
+  overflow: hidden !important;
+  position: relative !important;
 }
 
-.gallery-horizontal-scroll::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+.gf-gallery-track {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  will-change: transform;
 }
 
+.gf-gallery-slide {
+  position: relative !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.gf-gallery-slide img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  max-width: none !important;
+  display: block !important;
+}
+
+.gf-gallery-arrow,
 .nav-arrows-container,
-.nav-arrows-container.next,
-.nav-arrows-container.prev,
 button[data-hook="nav-arrow-next"],
 button[data-hook="nav-arrow-prev"] {
-  position: absolute !important;
-  z-index: 30 !important;
-  cursor: pointer !important;
+  z-index: 100 !important;
   pointer-events: auto !important;
-  background: transparent !important;
-  border: 0 !important;
-  opacity: 0.95;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  color: #f2f2f2;
+  cursor: pointer !important;
 }
 
-.nav-arrows-container:hover,
-button[data-hook="nav-arrow-next"]:hover,
-button[data-hook="nav-arrow-prev"]:hover {
-  opacity: 1;
-  transform: scale(1.05);
-}
-
-.nav-arrows-container .slideshow-arrow,
-.nav-arrows-container path {
-  fill: #f2f2f2 !important;
-}
-
-/* Prev button created by gallery.js */
-.nav-arrows-container.prev,
-button[data-hook="nav-arrow-prev"] {
-  left: 0 !important;
-  right: auto !important;
-}
-
-.nav-arrows-container.next,
-button[data-hook="nav-arrow-next"] {
-  right: 0 !important;
-  left: auto !important;
-}
-
-/* Soft dark edge so white arrows remain visible on light photos */
-.pro-gallery.inline-styles.slider::before,
-.pro-gallery.inline-styles.slider::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 56px;
-  z-index: 15;
-  pointer-events: none;
-}
-.pro-gallery.inline-styles.slider::before {
-  left: 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.28), transparent);
-}
-.pro-gallery.inline-styles.slider::after {
-  right: 0;
-  background: linear-gradient(270deg, rgba(0, 0, 0, 0.28), transparent);
+.gf-gallery-host .item-action {
+  pointer-events: none !important;
 }

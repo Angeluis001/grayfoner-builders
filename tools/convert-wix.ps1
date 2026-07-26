@@ -129,7 +129,7 @@ function Convert-WixPage {
   html { scroll-behavior: smooth; }
 </style>
 '@
-  $inject = $inject + '<link rel="stylesheet" href="js/gallery.css"><script src="js/gallery.js" defer></script>'
+  $inject = $inject + '<link rel="stylesheet" href="/js/gallery.css"><script src="/js/gallery.js" defer></script>'
   if ($html -match '</head>') {
     $html = $html -replace '</head>', ($inject + '</head>')
   }

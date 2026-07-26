@@ -1,251 +1,383 @@
 /**
- * Grayfoner Builders — static Pro Gallery controls
- * Restores next/prev arrows, keyboard nav, and horizontal sliding
- * for Wix SSR markup after the original Wix JS was removed.
+ * Grayfoner Builders — robust static Pro Gallery controller
+ * Works without the original Wix Pro Gallery runtime.
+ *
+ * - Slideshow / thumbnail galleries (full-bleed slides)
+ * - Home strip / multi-image slider
+ * - Next / Prev arrows (creates Prev if missing)
+ * - Keyboard + touch swipe
+ * - Root-safe: does not depend on Wix scroll hacks
  */
 (function () {
   "use strict";
 
-  function qs(el, sel) {
-    return el.querySelector(sel);
-  }
-  function qsa(el, sel) {
-    return Array.prototype.slice.call(el.querySelectorAll(sel));
-  }
+  var STYLE_ID = "gf-gallery-runtime-style";
 
-  function uniqueItems(galleryRoot) {
-    // Prefer group-view children (one slide each), else item-containers
-    var groups = qsa(galleryRoot, '[data-hook="group-view"]');
-    if (groups.length > 1) {
-      return groups;
-    }
-    var items = qsa(galleryRoot, '[data-hook="item-container"], .gallery-item-container');
-    // De-dupe by data-idx / data-id if SSR duplicated nodes
-    var seen = {};
-    var out = [];
-    items.forEach(function (item) {
-      var key =
-        item.getAttribute("data-idx") ||
-        item.getAttribute("data-id") ||
-        item.getAttribute("data-hash") ||
-        item.id ||
-        Math.random().toString(36);
-      if (!seen[key]) {
-        seen[key] = true;
-        out.push(item);
-      }
-    });
-    return out;
+  function qs(root, sel) {
+    return (root || document).querySelector(sel);
+  }
+  function qsa(root, sel) {
+    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
   }
 
-  function ensurePrevButton(container, nextBtn) {
-    var existing =
-      qs(container, '[data-hook="nav-arrow-prev"]') ||
-      qs(container, ".nav-arrows-container.prev");
-    if (existing) return existing;
-
-    var prev = document.createElement("button");
-    prev.type = "button";
-    prev.className = "nav-arrows-container prev gf-nav-prev";
-    prev.setAttribute("aria-label", "Previous Item");
-    prev.setAttribute("data-hook", "nav-arrow-prev");
-    prev.tabIndex = 0;
-
-    // Mirror next button styles when possible
-    if (nextBtn) {
-      var st = nextBtn.getAttribute("style") || "";
-      st = st
-        .replace(/right:\s*[^;]+;?/gi, "")
-        .replace(/left:\s*[^;]+;?/gi, "");
-      prev.setAttribute("style", st + ";left:0px;right:auto;");
-      var svg = nextBtn.querySelector("svg");
-      if (svg) {
-        var clone = svg.cloneNode(true);
-        clone.style.transform = "scaleX(-1) scale(1)";
-        prev.appendChild(clone);
-      } else {
-        prev.innerHTML =
-          '<svg width="23" height="39" viewBox="0 0 23 39" style="transform:scaleX(-1)"><path class="slideshow-arrow" d="M857.005,231.479L858.5,230l18.124,18-18.127,18-1.49-1.48L873.638,248Z" transform="translate(-855 -230)" fill="currentColor"></path></svg>';
-      }
-    } else {
-      prev.setAttribute(
-        "style",
-        "position:absolute;left:0;top:calc(50% - 50px);z-index:10;padding:0 38.5px;background:transparent;border:0;cursor:pointer;color:#F2F2F2;"
-      );
-      prev.innerHTML =
-        '<svg width="23" height="39" viewBox="0 0 23 39" style="transform:scaleX(-1)"><path class="slideshow-arrow" d="M857.005,231.479L858.5,230l18.124,18-18.127,18-1.49-1.48L873.638,248Z" transform="translate(-855 -230)" fill="#F2F2F2"></path></svg>';
-    }
-
-    container.appendChild(prev);
-    return prev;
+  function injectRuntimeCss() {
+    if (document.getElementById(STYLE_ID)) return;
+    var style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = [
+      ".gf-gallery-host{position:relative!important;overflow:hidden!important;}",
+      ".gf-gallery-viewport{position:relative!important;overflow:hidden!important;width:100%!important;height:100%!important;}",
+      ".gf-gallery-track{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;height:100%!important;will-change:transform;transition:transform .45s ease;}",
+      ".gf-gallery-slide{position:relative!important;flex:0 0 auto!important;height:100%!important;overflow:hidden!important;box-sizing:border-box!important;}",
+      ".gf-gallery-slide img{width:100%!important;height:100%!important;object-fit:cover!important;max-width:none!important;display:block!important;}",
+      ".gf-gallery-slide .gallery-item-wrapper,.gf-gallery-slide [data-hook='item-wrapper'],.gf-gallery-slide .gallery-item-content,.gf-gallery-slide .gallery-item-container{width:100%!important;height:100%!important;position:relative!important;left:0!important;top:0!important;margin:0!important;}",
+      ".gf-gallery-arrow{position:absolute!important;top:50%!important;transform:translateY(-50%)!important;z-index:100!important;pointer-events:auto!important;cursor:pointer!important;background:rgba(0,0,0,.28)!important;border:0!important;border-radius:4px!important;width:48px!important;height:64px!important;display:flex!important;align-items:center!important;justify-content:center!important;color:#fff!important;opacity:.95!important;padding:0!important;}",
+      ".gf-gallery-arrow:hover{background:rgba(0,0,0,.45)!important;opacity:1!important;}",
+      ".gf-gallery-arrow svg,.gf-gallery-arrow path,.gf-gallery-arrow .slideshow-arrow{fill:#fff!important;color:#fff!important;}",
+      ".gf-gallery-arrow.prev{left:8px!important;right:auto!important;}",
+      ".gf-gallery-arrow.next{right:8px!important;left:auto!important;}",
+      ".gf-gallery-host .nav-arrows-container,.gf-gallery-host [data-hook='nav-arrow-next'],.gf-gallery-host [data-hook='nav-arrow-prev']{z-index:100!important;pointer-events:auto!important;cursor:pointer!important;}",
+      /* kill common Wix blockers over the gallery */
+      ".gf-gallery-host .item-action{pointer-events:none!important;}",
+      ".gf-gallery-dots{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:8px;z-index:90;pointer-events:auto;}",
+      ".gf-gallery-dot{width:9px;height:9px;border-radius:50%;border:0;padding:0;background:rgba(255,255,255,.45);cursor:pointer;}",
+      ".gf-gallery-dot.active{background:#fff;}",
+    ].join("\n");
+    document.head.appendChild(style);
   }
 
-  function layoutStrip(scroll, items, mode) {
-    // mode: 'slide' = one full viewport per item, 'strip' = use existing widths
-    var viewportW = scroll.clientWidth || scroll.offsetWidth || 980;
-    var viewportH = scroll.clientHeight || scroll.offsetHeight || 353;
-    var total = 0;
-    var positions = [];
+  function getScrollEl(root) {
+    return (
+      qs(root, ".gallery-horizontal-scroll") ||
+      qs(root, '[id^="gallery-horizontal-scroll"]') ||
+      qs(root, ".gallery-column")
+    );
+  }
 
-    items.forEach(function (item, i) {
-      // Outer node is what we place on the strip (group-view or item-container)
-      var box =
-        item.matches && item.matches('[data-hook="item-container"]')
-          ? item
-          : qs(item, '[data-hook="item-container"]') || item;
+  function getTrack(scroll) {
+    return (
+      qs(scroll, ".gallery-horizontal-scroll-inner") ||
+      scroll.firstElementChild ||
+      scroll
+    );
+  }
 
-      var w = viewportW;
-      var h = viewportH;
+  function collectSlides(root, scroll) {
+    var scope = scroll || root;
+    var groups = qsa(scope, '[data-hook="group-view"]');
+    if (groups.length > 1) return groups;
 
-      if (mode === "strip") {
-        var sw = box.style && box.style.width ? parseInt(box.style.width, 10) : 0;
-        var sh = box.style && box.style.height ? parseInt(box.style.height, 10) : 0;
-        // Wix group-view CSS variables
-        var cs = window.getComputedStyle(item);
-        var gw = parseInt(cs.getPropertyValue("--group-width"), 10) || 0;
-        var gh = parseInt(cs.getPropertyValue("--group-height"), 10) || 0;
-        if (gw > 40) w = gw;
-        else if (sw > 40) w = sw;
-        else if (box.offsetWidth > 40) w = box.offsetWidth;
-        if (gh > 40) h = gh;
-        else if (sh > 40) h = sh;
-        else if (box.offsetHeight > 40) h = box.offsetHeight;
-      }
-
-      positions.push(total);
-
-      // Position the outer item (group-view) so strip width accumulates correctly
-      item.style.position = "absolute";
-      item.style.left = total + "px";
-      item.style.top = "0px";
-      item.style.width = w + "px";
-      item.style.height = h + "px";
-      item.style.right = "auto";
-      item.style.display = "block";
-      item.style.opacity = "1";
-      item.style.visibility = "visible";
-      item.style.margin = "0";
-      item.style.padding = "0";
-
-      if (box && box !== item) {
-        box.style.position = "relative";
-        box.style.left = "0";
-        box.style.top = "0";
-        box.style.width = w + "px";
-        box.style.height = h + "px";
-        box.style.display = "block";
-        box.style.opacity = "1";
-        box.style.visibility = "visible";
-      } else if (box) {
-        box.style.position = "absolute";
-        box.style.left = total + "px";
-        box.style.top = "0px";
-        box.style.width = w + "px";
-        box.style.height = h + "px";
-      }
-
-      qsa(item, "img").forEach(function (img) {
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "cover";
-        img.style.maxWidth = "none";
+    var items = qsa(scope, '[data-hook="item-container"]');
+    if (items.length > 1) {
+      // de-dupe by data-idx / data-id
+      var seen = {};
+      var out = [];
+      items.forEach(function (el) {
+        var key =
+          el.getAttribute("data-idx") ||
+          el.getAttribute("data-id") ||
+          el.getAttribute("data-hash") ||
+          el.id;
+        if (!key) key = "i" + out.length;
+        if (!seen[key]) {
+          seen[key] = true;
+          out.push(el);
+        }
       });
-      var wrap = qs(item, '[data-hook="item-wrapper"], .gallery-item-wrapper');
-      if (wrap) {
-        wrap.style.width = "100%";
-        wrap.style.height = "100%";
-      }
-
-      total += w;
-    });
-
-    var inner =
-      qs(scroll, ".gallery-horizontal-scroll-inner") || scroll.firstElementChild;
-    if (inner) {
-      inner.style.position = "relative";
-      inner.style.width = total + "px";
-      inner.style.height = viewportH + "px";
-      inner.style.minWidth = total + "px";
+      if (out.length > 1) return out;
     }
 
-    scroll.style.overflowX = "auto";
-    scroll.style.overflowY = "hidden";
-    scroll.style.scrollBehavior = "smooth";
-    scroll.style.position = scroll.style.position || "relative";
-    scroll.style.webkitOverflowScrolling = "touch";
-    // Hide scrollbar but keep scroll
-    scroll.style.scrollbarWidth = "none";
-    scroll.style.msOverflowStyle = "none";
-
-    return { positions: positions, total: total, viewportW: viewportW };
+    // Fallback: direct children of track that contain images
+    var track = getTrack(scroll);
+    var kids = Array.prototype.slice.call(track.children || []);
+    kids = kids.filter(function (k) {
+      return k.querySelector && k.querySelector("img");
+    });
+    return kids;
   }
 
-  function initGallery(root) {
+  function measureSlideWidth(host, scroll, slide, mode) {
+    var hostW =
+      (scroll && (scroll.clientWidth || scroll.offsetWidth)) ||
+      (host && (host.clientWidth || host.offsetWidth)) ||
+      980;
+
+    if (mode === "slide") return hostW;
+
+    // strip: try group CSS vars / inline width / image natural
+    var cs = window.getComputedStyle(slide);
+    var gw = parseFloat(cs.getPropertyValue("--group-width")) || 0;
+    if (gw > 40) return gw;
+
+    var box =
+      slide.matches && slide.matches('[data-hook="item-container"]')
+        ? slide
+        : qs(slide, '[data-hook="item-container"]') || slide;
+    var sw = parseInt((box.style && box.style.width) || "0", 10) || 0;
+    if (sw > 40) return sw;
+
+    if (box.offsetWidth > 40) return box.offsetWidth;
+
+    // default strip card
+    return Math.min(404, Math.max(280, Math.floor(hostW / 3.5)));
+  }
+
+  function makeArrow(direction, existing) {
+    var btn = existing || document.createElement("button");
+    btn.type = "button";
+    btn.className =
+      "gf-gallery-arrow " +
+      direction +
+      " nav-arrows-container " +
+      direction;
+    btn.setAttribute(
+      "data-hook",
+      direction === "next" ? "nav-arrow-next" : "nav-arrow-prev"
+    );
+    btn.setAttribute(
+      "aria-label",
+      direction === "next" ? "Next Item" : "Previous Item"
+    );
+    btn.tabIndex = 0;
+
+    // Keep existing SVG if present, else inject chevron
+    if (!btn.querySelector("svg")) {
+      var flip = direction === "prev" ? ' style="transform:scaleX(-1)"' : "";
+      btn.innerHTML =
+        '<svg width="23" height="39" viewBox="0 0 23 39"' +
+        flip +
+        '><path class="slideshow-arrow" fill="#fff" d="M857.005,231.479L858.5,230l18.124,18-18.127,18-1.49-1.48L873.638,248Z" transform="translate(-855 -230)"></path></svg>';
+    } else {
+      var path = btn.querySelector("path, .slideshow-arrow");
+      if (path) {
+        path.setAttribute("fill", "#fff");
+        path.style.fill = "#fff";
+      }
+      if (direction === "prev") {
+        var svg = btn.querySelector("svg");
+        if (svg) svg.style.transform = "scaleX(-1)";
+      }
+    }
+    return btn;
+  }
+
+  function buildDots(host, count, goTo) {
+    var old = qs(host, ".gf-gallery-dots");
+    if (old) old.remove();
+    if (count < 2 || count > 24) return null;
+    var wrap = document.createElement("div");
+    wrap.className = "gf-gallery-dots";
+    for (var i = 0; i < count; i++) {
+      (function (idx) {
+        var d = document.createElement("button");
+        d.type = "button";
+        d.className = "gf-gallery-dot" + (idx === 0 ? " active" : "");
+        d.setAttribute("aria-label", "Go to slide " + (idx + 1));
+        d.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          goTo(idx);
+        });
+        wrap.appendChild(d);
+      })(i);
+    }
+    host.appendChild(wrap);
+    return wrap;
+  }
+
+  function initOneGallery(root) {
+    if (root.getAttribute("data-gf-gallery-ready") === "true") return;
+
     var parent =
       root.classList.contains("pro-gallery-parent-container")
         ? root
         : qs(root, ".pro-gallery-parent-container") || root;
 
-    var scroll =
-      qs(root, ".gallery-horizontal-scroll") ||
-      qs(root, '[id^="gallery-horizontal-scroll"]') ||
-      qs(parent, ".gallery-horizontal-scroll");
-
+    var scroll = getScrollEl(root) || getScrollEl(parent);
     if (!scroll) return;
 
-    var items = uniqueItems(root);
-    if (items.length < 2) {
-      // Still show controls as disabled / hide next if single
-      return;
-    }
+    var slides = collectSlides(root, scroll);
+    if (slides.length < 2) return;
 
-    var isThumb =
-      parent.classList.contains("gallery-thumbnails") ||
-      !!qs(root, ".gallery-thumbnails");
-    var isSlider =
-      parent.classList.contains("gallery-slider") ||
-      !!qs(root, ".gallery-slider") ||
-      (root.className && String(root.className).indexOf("slider") >= 0);
-
-    // Full-bleed slide for thumbnail galleries / one-row full-width items
-    var firstBox =
-      qs(items[0], '[data-hook="item-container"]') || items[0];
-    var firstW = firstBox.style && firstBox.style.width
-      ? parseInt(firstBox.style.width, 10)
-      : 0;
-    var mode =
-      isThumb || firstW >= (scroll.clientWidth || 900) * 0.85
-        ? "slide"
-        : "strip";
-
-    // Ensure outer containers clip correctly
-    var pgContainer =
+    var host =
       qs(root, ".pro-gallery.inline-styles") ||
       qs(root, '[id^="pro-gallery-container"]') ||
-      parent;
-    if (pgContainer) {
-      pgContainer.style.position = pgContainer.style.position || "relative";
-      pgContainer.style.overflow = "hidden";
-    }
-    parent.style.position = parent.style.position || "relative";
+      parent ||
+      root;
 
-    var layout = layoutStrip(scroll, items, mode);
-    var index = 0;
+    host.classList.add("gf-gallery-host");
 
-    function goTo(i, behavior) {
-      if (i < 0) i = items.length - 1;
-      if (i >= items.length) i = 0;
-      index = i;
-      var left = layout.positions[index] || 0;
-      if (typeof scroll.scrollTo === "function") {
-        scroll.scrollTo({ left: left, behavior: behavior || "smooth" });
-      } else {
-        scroll.scrollLeft = left;
-      }
-      // aria
-      items.forEach(function (item, j) {
-        item.setAttribute("aria-hidden", j === index ? "false" : "true");
+    var height =
+      scroll.clientHeight ||
+      scroll.offsetHeight ||
+      host.clientHeight ||
+      parseInt(scroll.style.height, 10) ||
+      353;
+
+    // Detect mode
+    var isThumb =
+      parent.classList.contains("gallery-thumbnails") ||
+      host.classList.contains("gallery-thumbnails") ||
+      !!qs(root, ".gallery-thumbnails");
+    var firstW = measureSlideWidth(host, scroll, slides[0], "strip");
+    var hostW = scroll.clientWidth || host.clientWidth || 980;
+    var mode =
+      isThumb || firstW >= hostW * 0.8 ? "slide" : "strip";
+
+    // Rebuild as transform track
+    var track = getTrack(scroll);
+    track.classList.add("gf-gallery-track");
+
+    // Ensure slides are direct flex children of track when possible
+    // If slides are already under track, re-order/normalize styles
+    var widths = [];
+    slides.forEach(function (slide, i) {
+      // If slide is not under track, leave it (still style in place)
+      slide.classList.add("gf-gallery-slide");
+      var w = measureSlideWidth(host, scroll, slide, mode);
+      if (mode === "slide") w = hostW;
+      widths.push(w);
+
+      slide.style.position = "relative";
+      slide.style.left = "auto";
+      slide.style.top = "auto";
+      slide.style.right = "auto";
+      slide.style.bottom = "auto";
+      slide.style.flex = "0 0 " + w + "px";
+      slide.style.width = w + "px";
+      slide.style.minWidth = w + "px";
+      slide.style.maxWidth = w + "px";
+      slide.style.height = height + "px";
+      slide.style.display = "block";
+      slide.style.opacity = "1";
+      slide.style.visibility = "visible";
+      slide.style.transform = "none";
+      slide.style.margin = "0";
+      slide.removeAttribute("aria-hidden");
+
+      // Normalize nested absolute positioning from Wix SSR
+      qsa(slide, "[data-hook='item-container'], .gallery-item-container, [data-hook='item-wrapper'], .gallery-item-wrapper, .gallery-item-content, .item-link-wrapper").forEach(function (n) {
+        n.style.position = "relative";
+        n.style.left = "0";
+        n.style.top = "0";
+        n.style.width = "100%";
+        n.style.height = "100%";
+        n.style.margin = "0";
+        n.style.opacity = "1";
+        n.style.visibility = "visible";
+        n.style.display = "block";
       });
+
+      qsa(slide, "img").forEach(function (img) {
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+        img.style.maxWidth = "none";
+        img.loading = img.loading || "lazy";
+      });
+
+      // Move under track if orphaned
+      if (slide.parentElement !== track) {
+        track.appendChild(slide);
+      }
+    });
+
+    // Remove empty leftover nodes that break flex width
+    Array.prototype.slice.call(track.children).forEach(function (child) {
+      if (slides.indexOf(child) === -1 && !child.querySelector("img")) {
+        // keep structural nodes that are empty wrappers? hide them
+        if (!child.classList.contains("gf-gallery-slide")) {
+          child.style.display = "none";
+        }
+      }
+    });
+
+    var total = widths.reduce(function (a, b) {
+      return a + b;
+    }, 0);
+
+    scroll.classList.add("gf-gallery-viewport");
+    scroll.style.overflow = "hidden";
+    scroll.style.width = "100%";
+    scroll.style.height = height + "px";
+    scroll.style.position = "relative";
+    scroll.scrollLeft = 0;
+
+    track.style.display = "flex";
+    track.style.flexDirection = "row";
+    track.style.flexWrap = "nowrap";
+    track.style.width = total + "px";
+    track.style.minWidth = total + "px";
+    track.style.height = height + "px";
+    track.style.position = "relative";
+    track.style.left = "0";
+    track.style.top = "0";
+    track.style.transform = "translate3d(0,0,0)";
+    track.style.transition = "transform 0.45s ease";
+
+    host.style.position = "relative";
+    host.style.overflow = "hidden";
+    if (!host.style.height && height) {
+      // don't force if host already sized by Wix mesh
+    }
+
+    // Arrows
+    var nextExisting =
+      qs(host, '[data-hook="nav-arrow-next"]') ||
+      qs(root, '[data-hook="nav-arrow-next"]') ||
+      qs(parent, '[data-hook="nav-arrow-next"]');
+    var prevExisting =
+      qs(host, '[data-hook="nav-arrow-prev"]') ||
+      qs(root, '[data-hook="nav-arrow-prev"]');
+
+    var nextBtn = makeArrow("next", nextExisting);
+    var prevBtn = makeArrow("prev", prevExisting);
+
+    if (!nextExisting) host.appendChild(nextBtn);
+    else {
+      nextBtn.classList.add("gf-gallery-arrow", "next");
+      // re-parent onto host so it's never clipped/hidden
+      if (nextBtn.parentElement !== host) host.appendChild(nextBtn);
+    }
+    if (!prevExisting) host.appendChild(prevBtn);
+    else {
+      prevBtn.classList.add("gf-gallery-arrow", "prev");
+      if (prevBtn.parentElement !== host) host.appendChild(prevBtn);
+    }
+
+    var index = 0;
+    var positions = [];
+    var acc = 0;
+    widths.forEach(function (w) {
+      positions.push(acc);
+      acc += w;
+    });
+
+    var dotsWrap = null;
+
+    function setDots() {
+      if (!dotsWrap) return;
+      qsa(dotsWrap, ".gf-gallery-dot").forEach(function (d, i) {
+        if (i === index) d.classList.add("active");
+        else d.classList.remove("active");
+      });
+    }
+
+    function goTo(i, instant) {
+      if (i < 0) i = slides.length - 1;
+      if (i >= slides.length) i = 0;
+      index = i;
+      var x = positions[index] || 0;
+      if (instant) {
+        track.style.transition = "none";
+        track.style.transform = "translate3d(" + -x + "px,0,0)";
+        // force reflow
+        void track.offsetHeight;
+        track.style.transition = "transform 0.45s ease";
+      } else {
+        track.style.transform = "translate3d(" + -x + "px,0,0)";
+      }
+      setDots();
     }
 
     function next() {
@@ -255,71 +387,52 @@
       goTo(index - 1);
     }
 
-    var nextBtn =
-      qs(root, '[data-hook="nav-arrow-next"]') ||
-      qs(root, ".nav-arrows-container.next") ||
-      qs(parent, '[data-hook="nav-arrow-next"]') ||
-      qs(pgContainer, '[data-hook="nav-arrow-next"]') ||
-      qs(root.parentElement || document, '[data-hook="nav-arrow-next"]');
-
-    // Prefer placing prev next to the same parent as the next button
-    var arrowHost =
-      (nextBtn && nextBtn.parentElement) || pgContainer || parent;
-    var prevBtn =
-      qs(arrowHost, '[data-hook="nav-arrow-prev"]') ||
-      qs(root, '[data-hook="nav-arrow-prev"]') ||
-      ensurePrevButton(arrowHost, nextBtn);
-
-    // Style both arrows for static snapshot
-    [nextBtn, prevBtn].forEach(function (btn) {
-      if (!btn) return;
-      btn.style.position = "absolute";
-      btn.style.zIndex = "20";
-      btn.style.cursor = "pointer";
-      btn.style.background = "transparent";
-      btn.style.border = "0";
-      btn.style.display = "flex";
-      btn.style.alignItems = "center";
-      btn.style.justifyContent = "center";
-      btn.style.pointerEvents = "auto";
-      btn.style.color = "#F2F2F2";
-      btn.style.opacity = "0.95";
-      if (!btn.style.top) btn.style.top = "calc(50% - 28px)";
-      var path = btn.querySelector("path, .slideshow-arrow");
-      if (path) {
-        path.style.fill = "#F2F2F2";
-        path.setAttribute("fill", "#F2F2F2");
+    function onArrowClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      var t = e.currentTarget;
+      if (
+        t.getAttribute("data-hook") === "nav-arrow-next" ||
+        t.classList.contains("next")
+      ) {
+        next();
+      } else {
+        prev();
       }
+    }
+
+    [nextBtn, prevBtn].forEach(function (btn) {
+      // clone to drop stale Wix handlers if any
+      var clean = btn.cloneNode(true);
+      clean.className = btn.className;
+      if (btn.parentNode) btn.parentNode.replaceChild(clean, btn);
+      if (clean.getAttribute("data-hook") === "nav-arrow-next" || clean.classList.contains("next")) {
+        nextBtn = clean;
+        clean.classList.add("gf-gallery-arrow", "next");
+      } else {
+        prevBtn = clean;
+        clean.classList.add("gf-gallery-arrow", "prev");
+      }
+      clean.addEventListener("click", onArrowClick, true);
+      clean.addEventListener(
+        "keydown",
+        function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            onArrowClick(e);
+          }
+        },
+        true
+      );
     });
-    if (prevBtn) {
-      prevBtn.style.left = "0";
-      prevBtn.style.right = "auto";
-    }
-    if (nextBtn) {
-      nextBtn.style.right = "0";
-      nextBtn.style.left = "auto";
-    }
 
-    function bind(btn, fn) {
-      if (!btn) return;
-      btn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        fn();
-      });
-      btn.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          fn();
-        }
-      });
-    }
-    bind(nextBtn, next);
-    bind(prevBtn, prev);
+    dotsWrap = buildDots(host, slides.length, function (i) {
+      goTo(i);
+    });
 
-    // Keyboard when gallery focused / hovered
-    root.tabIndex = root.tabIndex >= 0 ? root.tabIndex : 0;
-    root.addEventListener("keydown", function (e) {
+    // Keyboard on host
+    host.tabIndex = 0;
+    host.addEventListener("keydown", function (e) {
       if (e.key === "ArrowRight") {
         e.preventDefault();
         next();
@@ -329,79 +442,142 @@
       }
     });
 
-    // Sync index on manual scroll / swipe
-    var scrollTimer;
-    scroll.addEventListener(
-      "scroll",
-      function () {
-        clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(function () {
-          var sl = scroll.scrollLeft;
-          var best = 0;
-          var bestDist = Infinity;
-          layout.positions.forEach(function (p, i) {
-            var d = Math.abs(p - sl);
-            if (d < bestDist) {
-              bestDist = d;
-              best = i;
-            }
-          });
-          index = best;
-        }, 80);
+    // Touch swipe
+    var touchX = null;
+    host.addEventListener(
+      "touchstart",
+      function (e) {
+        if (!e.touches || !e.touches.length) return;
+        touchX = e.touches[0].clientX;
+      },
+      { passive: true }
+    );
+    host.addEventListener(
+      "touchend",
+      function (e) {
+        if (touchX == null || !e.changedTouches || !e.changedTouches.length)
+          return;
+        var dx = e.changedTouches[0].clientX - touchX;
+        touchX = null;
+        if (Math.abs(dx) < 40) return;
+        if (dx < 0) next();
+        else prev();
       },
       { passive: true }
     );
 
-    // Click-through on slides should not break nav; optional lightbox-free
-    goTo(0, "auto");
-
-    // Re-layout on resize
+    // Resize
     var resizeTimer;
     window.addEventListener("resize", function () {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(function () {
-        layout = layoutStrip(scroll, items, mode);
-        goTo(index, "auto");
-      }, 150);
+        hostW = scroll.clientWidth || host.clientWidth || hostW;
+        height =
+          scroll.clientHeight ||
+          scroll.offsetHeight ||
+          host.clientHeight ||
+          height;
+        total = 0;
+        positions = [];
+        widths = [];
+        slides.forEach(function (slide) {
+          var w = mode === "slide" ? hostW : measureSlideWidth(host, scroll, slide, mode);
+          if (mode === "slide") w = hostW;
+          widths.push(w);
+          positions.push(total);
+          total += w;
+          slide.style.flex = "0 0 " + w + "px";
+          slide.style.width = w + "px";
+          slide.style.minWidth = w + "px";
+          slide.style.maxWidth = w + "px";
+          slide.style.height = height + "px";
+        });
+        track.style.width = total + "px";
+        track.style.minWidth = total + "px";
+        track.style.height = height + "px";
+        scroll.style.height = height + "px";
+        goTo(index, true);
+      }, 120);
     });
 
+    goTo(0, true);
     root.setAttribute("data-gf-gallery-ready", "true");
+    host.setAttribute("data-gf-gallery-ready", "true");
+  }
+
+  function findGalleryRoots() {
+    var set = [];
+    var seen = {};
+
+    function add(el) {
+      if (!el || seen[el]) return;
+      // Only galleries that actually have a horizontal scroller + multiple images
+      var scroll = getScrollEl(el);
+      if (!scroll) return;
+      var slides = collectSlides(el, scroll);
+      if (slides.length < 2) return;
+      seen[el] = true;
+      set.push(el);
+    }
+
+    qsa(document, "[id^='pro-gallery-comp-']").forEach(add);
+    qsa(document, ".pro-gallery").forEach(add);
+    qsa(document, ".pro-gallery-parent-container").forEach(add);
+
+    // Prefer outermost unique: if A contains B, keep A only
+    return set.filter(function (el) {
+      return !set.some(function (other) {
+        return other !== el && other.contains(el);
+      });
+    });
   }
 
   function initAll() {
-    var roots = qsa(
-      document,
-      ".pro-gallery, .pro-gallery-parent-container, [id^='pro-gallery-comp-']"
-    );
-    // Prefer unique outer roots
-    var seen = {};
+    injectRuntimeCss();
+    var roots = findGalleryRoots();
     roots.forEach(function (root) {
-      var id = root.id || root.getAttribute("data-hook") || Math.random();
-      // Prefer the element that contains both scroll + arrows
-      var candidate = root;
-      if (
-        !qs(candidate, ".gallery-horizontal-scroll") &&
-        root.parentElement &&
-        qs(root.parentElement, ".gallery-horizontal-scroll")
-      ) {
-        candidate = root.parentElement;
-      }
-      var key = candidate.id || candidate.className + itemsFingerprint(candidate);
-      if (seen[key]) return;
-      if (!qs(candidate, ".gallery-horizontal-scroll")) return;
-      seen[key] = true;
       try {
-        initGallery(candidate);
+        initOneGallery(root);
       } catch (err) {
         if (typeof console !== "undefined") {
-          console.warn("Gallery init failed", err);
+          console.warn("[gf-gallery] init failed", err);
         }
       }
     });
-  }
 
-  function itemsFingerprint(el) {
-    return String(qsa(el, ".gallery-item-container").length);
+    // Global capture fallback: any arrow click on page
+    document.addEventListener(
+      "click",
+      function (e) {
+        var btn = e.target.closest
+          ? e.target.closest(
+              '[data-hook="nav-arrow-next"], [data-hook="nav-arrow-prev"], .gf-gallery-arrow, .nav-arrows-container'
+            )
+          : null;
+        if (!btn) return;
+        var host = btn.closest
+          ? btn.closest("[data-gf-gallery-ready], .gf-gallery-host, .pro-gallery, .pro-gallery-parent-container")
+          : null;
+        if (!host || host.getAttribute("data-gf-gallery-ready") !== "true") {
+          // try init late
+          var root =
+            (btn.closest && btn.closest("[id^='pro-gallery-comp-'], .pro-gallery")) ||
+            null;
+          if (root && root.getAttribute("data-gf-gallery-ready") !== "true") {
+            try {
+              initOneGallery(root);
+            } catch (err) {}
+          }
+        }
+      },
+      true
+    );
+
+    if (typeof console !== "undefined") {
+      console.info(
+        "[gf-gallery] initialized " + roots.length + " gallery(ies)"
+      );
+    }
   }
 
   if (document.readyState === "loading") {
@@ -409,4 +585,8 @@
   } else {
     initAll();
   }
+  // Late paint (Wix CSS may change sizes)
+  window.addEventListener("load", function () {
+    setTimeout(initAll, 50);
+  });
 })();
